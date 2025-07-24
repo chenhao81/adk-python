@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import json
 import logging
@@ -504,7 +505,7 @@ def _message_to_generate_content_response(
       if tool_call.type == "function":
         part = types.Part.from_function_call(
             name=tool_call.function.name,
-            args=json.loads(tool_call.function.arguments or "{}"),
+            args=ast.literal_eval(tool_call.function.arguments or "{}"),
         )
         part.function_call.id = tool_call.id
         parts.append(part)
