@@ -17,6 +17,9 @@ from __future__ import annotations
 import ast
 import base64
 import json
+import re
+import json5
+import yaml
 import logging
 from typing import Any
 from typing import AsyncGenerator
@@ -483,6 +486,43 @@ def _model_response_to_generate_content_response(
   return llm_response
 
 
+def safe_parse_args(s: str):
+  if isinstance(s, dict):
+      return s
+  if not isinstance(s, str) or not s.strip():
+      return {}
+
+  # 1) 先按标准 JSON 试（最好且最安全）
+  try:
+      return json.loads(s)
+  except Exception:
+      pass
+
+  # 2) 再试 JSON5（能接受单引号、末尾逗号等宽松语法）
+  if json5:
+      try:
+          return json5.loads(s)
+      except Exception:
+          pass
+
+  # 3) 再试 YAML（也很宽松）
+  if yaml:
+      try:
+          return yaml.safe_load(s)
+      except Exception:
+          pass
+
+  # 4) 最后兜底：把 null/true/false 替成 Python 的 None/True/False，再 literal_eval
+  repaired = re.sub(r'\bnull\b', 'None', s, flags=re.IGNORECASE)
+  repaired = re.sub(r'\btrue\b', 'True', repaired, flags=re.IGNORECASE)
+  repaired = re.sub(r'\bfalse\b', 'False', repaired, flags=re.IGNORECASE)
+  try:
+      return ast.literal_eval(repaired)
+  except Exception:
+      # 全都失败，返回原字符串或抛你自己的业务异常
+      return {}
+
+
 def _message_to_generate_content_response(
     message: Message, is_partial: bool = False
 ) -> LlmResponse:
@@ -503,9 +543,11 @@ def _message_to_generate_content_response(
   if message.get("tool_calls", None):
     for tool_call in message.get("tool_calls"):
       if tool_call.type == "function":
+        args = safe_parse_args(tool_call.function.arguments or "{}")
+
         part = types.Part.from_function_call(
             name=tool_call.function.name,
-            args=ast.literal_eval(tool_call.function.arguments or "{}"),
+            args=args,
         )
         part.function_call.id = tool_call.id
         parts.append(part)
