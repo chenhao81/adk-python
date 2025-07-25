@@ -25,6 +25,7 @@ from typing_extensions import override
 from .._gemini_schema_util import _to_gemini_schema
 from .mcp_session_manager import MCPSessionManager
 from .mcp_session_manager import retry_on_closed_resource
+from datetime import timedelta
 
 # Attempt to import MCP Tool from the MCP library, and hints user to upgrade
 # their Python version to 3.10 if it fails.
@@ -130,7 +131,7 @@ class MCPTool(BaseAuthenticatedTool):
     # Get the session from the session manager
     session = await self._mcp_session_manager.create_session(headers=headers)
 
-    response = await session.call_tool(self.name, arguments=args)
+    response = await session.call_tool(self.name, arguments=args,read_timeout_seconds=timedelta(seconds=30))
     return response
 
   async def _get_headers(
